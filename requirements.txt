@@ -1,0 +1,29 @@
+
+torch==2.3.0
+numpy==2.1.2
+
+matplotlib==3.9.2
+packaging==24.1
+pyparsing==3.2.0 
+
+torchvision==0.18
+av==13.1.0
+opencv-python==4.10.0.84
+
+pandas==2.2.3
+pytz==2024.2
+python-dateutil==2.9.0.post0
+six==1.16.0
+
+tqdm==4.66.3
+smart-open==7.0.5
+scipy==1.14.1
+
+seaborn==0.13.2
+
+torch-scatter==2.1.2 -f https://data.pyg.org/whl/torch-2.3.0+cu121.html
+
+cupy-cuda12x==13.3.0
+
+# Perhaps run:
+# conda install pytorch-scatter -c pyg
