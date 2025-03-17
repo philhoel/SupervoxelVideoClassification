@@ -419,6 +419,10 @@ def spstep(
     csr = cpu_coo_matrix((ones, adj), shape=(nnz, nnz)).tocsr()
     cc = lab.new_tensor(cpu_concom(csr)[1]).to(device)
 
+    # print(cc)
+
+    # print(cc.shape)
+
     vfeat_new = scatter_mean_2d(vfeat, cc)
     edges_new = cc[edges].contiguous()
     edges_new = edges_new[:, fast_uidx_long2d(edges_new)]
@@ -715,6 +719,8 @@ def process(vid: torch.Tensor, maxlvl: int = 8, interp: bool = True):
     coords = init_graph_coords(vid)
     bbox = bbox_coords(segs, coords)
 
+    output.append(bbox)
+
     IE = InterpolationExtractor(10, 5, 3)
 
     trilinear, mask = IE.forward(flatvid, segs, coords, bbox)
@@ -788,33 +794,120 @@ def plot_animation(video, segs):
     plt.show()
 
 
+def image_loss(video: torch.Tensor, segs: torch.Tensor):
+
+    fvid = t.permute(0, 2, 3, 4, 1).reshape(-1, 3)
+    means = scatter_mean_2d(fvid, segs.view(-1))
+    sv_vid = means[segs]
+
+    sv_vid = sv_vid.permute(0, 4, 1, 2, 3)
+
+    print(video.shape)
+
+    print(sv_vid.shape)
+
+    l = F.mse_loss(sv_vid, video)
+
+    return l
+
+
+def statistics_of_segs(video: torch.Tensor, segs: torch.Tensor):
+    # What type of statistics?
+    # Which dataset? Which config of the dataset (resolution, frames etc)?
+    # Define length of supervoxel (not very well shaped)
+    # Find length of supervoxels in specific direction
+    # Per class or total or both
+    # Average length of supervoxels or average length of highest and lowest
+    #
+
+    pass
+
+
 if __name__ == "__main__":
 
-    from moviepy.editor import VideoFileClip
+    pass
+    # from moviepy.editor import VideoFileClip
 
-    info_list = []
+    # info_list = []
 
-    clip = VideoFileClip("v_Archery_g01_c02.avi")
-    clip = clip.resize(height=240, width=320)
-    vid = np.array([frame for frame in clip.iter_frames()])
+    # clip = VideoFileClip("v_Archery_g01_c02.avi")
+    # clip = clip.resize(height=240, width=320)
+    # vid = np.array([frame for frame in clip.iter_frames()])
 
-    vid = vid / 255
+    # vid = vid / 255
 
-    info_list.append(vid.shape)
+    # info_list.append(vid.shape)
 
-    t = torch.tensor(vid, dtype=torch.float32)
-    t = t.unsqueeze(0)
-    t = t.permute(0, -1, 1, 2, 3)
+    # t = torch.tensor(vid, dtype=torch.float32)
+    # t = t.unsqueeze(0)
+    # t = t.permute(0, -1, 1, 2, 3)
 
-    # output = process(t, 8)
+    # segs1, edges1 = get_supervoxel_segmentation(t, 10)
+    # segs2, edges3 = get_supervoxel_segmentation(t, 11)
+    # segs3, edges3 = get_supervoxel_segmentation(t, 12)
+
+    # print(segs)
+
+    # print(segs.shape)
+
+    # print(segs.view(-1))
+    # print(segs.view(-1).shape)
+
+    # print(f"num sv: {segs.max() + 1}")
+
+    # temp = segs.view(-1)
+    # print()
+
+    # print(f"segs.view: {temp}")
+
+    # print()
+
+    # print(f"segs.view shape: {temp.shape}")
+
+    # print(f"num of unique: {temp.unique()}")
+
+    # new_arr = torch.zeros(temp.unique().shape)
+
+    # print(f"segs: {segs}")
+
+    # print(f"maxlvl 10: {image_loss(t, segs1)}")
+    # print(f"maxlvl 11: {image_loss(t, segs2)}")
+    # print(f"maxlvl 12: {image_loss(t, segs3)}")
+
+    # for num in temp:
+    #    new_arr[num] += 1
+
+    # plt.bar(range(0, 119), new_arr)
+    # plt.show()
+
+    # fvid = t.permute(0, 2, 3, 4, 1).reshape(-1, 3)
+    # means = scatter_mean_2d(fvid, segs.view(-1))
+
+    # print(f"means: {means}")
+
+    # print()
+
+    # print(f"shape means: {means.shape}")
+
+    # print()
+
+    # print(f"means[segs]: {means[segs]}")
+
+    # print()
+
+    # print(f"means[segs] shape: {means[segs].shape}")
+
+    # print(coords.shape)
+
+    # print(coords)
 
     # print(output[-1])
 
-    segs, edges = altered_sv_alg(t, 4, 4)
+    # segs, edges = altered_sv_alg(t, 4, 4)
 
     # plot image
 
-    plot_image(t, segs, 0)
+    # plot_image(t, segs, 0)
 
     # plot_image(t, segs, 0)
 
