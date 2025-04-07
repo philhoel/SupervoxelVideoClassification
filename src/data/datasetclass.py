@@ -177,17 +177,14 @@ class GetData:
 
 class VideoData(Dataset):
 
-    def __init__(self, X, y, transforms, path, class_names, crop=True):
+    def __init__(self, X, y, path, class_names, augmentations=[], transforms=None, num_frames=20):
         self.X = X
         self.y = y
         self.transforms = transforms
         self.class_names = class_names
         self.path = path
-        self.crop = crop
-        self.augmentations = None
-
-    def crop_videos(self, height, width, frames):
-        pass
+        self.augmentations = augmentations
+        self.num_frames = num_frames
 
     def __len__(self):
         return len(self.X)
@@ -200,8 +197,9 @@ class VideoData(Dataset):
         frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 
-        frames = np.empty((frame_count, frame_height,
+        frames = np.empty((self.num_frames, frame_height,
                           frame_width, 3), dtype=np.uint8)
+        
 
         for i in range(frame_count):
             ret, frame = cap.read()
@@ -213,17 +211,29 @@ class VideoData(Dataset):
 
         cap.release()
 
+        if frame_count < self.num_frames:
+            diff = self.num_frames - frame_count
+            for i in range(1, diff):
+                frames[frame_count + diff - 1] = frames[frame_count-1]
+
         x = torch.from_numpy(frames) / 255
         x = x.permute(0, 3, 1, 2).float()
 
-        x = x[:20, :, :, :]
+        #print(f"x shape: {x.shape}")
 
-        if self.augmentations:
+        
+        if len(self.augmentations) > 0:
             x = augment(self.augmentations)(x)
+            
 
         x = x.permute(1, 0, 2, 3)
 
         if self.transforms:
             x = self.transforms(x)
 
-        return x, self.y[idx]
+        if x.shape[1] < 20:
+            x
+
+       
+
+        return x.clone(), self.y[idx]

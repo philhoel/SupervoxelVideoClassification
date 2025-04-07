@@ -207,6 +207,7 @@ class GATModel(nn.Module):
         # Move stuff to device
         device = device or torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu')
+        
         model = self.to(device)
 
         num_vids = len(train_data_loader)
@@ -264,12 +265,15 @@ class GATModel(nn.Module):
 
                 # print(f"trilinear: {trilinear.shape}, Adj: {adj.shape}, Labels: {labels.shape}")
 
+                
                 pre_time = perf_counter()
                 preprocessing_time = pre_time - forward_time
                 model.train()
                 optimizer.zero_grad()
                 output = model(features, edges, cls_indexes)
-                # print(f"Labels: {torch.unique(labels)}", flush=True)
+                #print(f"Labels: {torch.unique(labels)}", flush=True)
+                #print(f"labels shape: {labels.shape}")
+                #print(f"output shape: {output.shape}")
                 loss = loss_fn(output, labels)
                 loss.backward()
                 optimizer.step()
@@ -346,7 +350,8 @@ class GATModel(nn.Module):
         short_id = format(random.randint(0, 99999), 'x')
 
         train_details = f"total_epochs_{self.epochs_trained}_{train_details}"
-        self.save_model(f"{train_details}_{self.model_details}_id_{short_id}")
+        print(f"{train_details}_{self.model_details}_id_{short_id}")
+        self.save_model(f"id_{short_id}")
         self.save_best(
             f"best_{train_details}_{self.model_details}_id_{short_id}")
         self.save_iteration_loss_plot(

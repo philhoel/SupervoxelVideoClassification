@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_scatter import scatter_add, scatter_softmax
+#from .scatter_functions import scatter_softmax_2d, scatter_sum_2d
 
 
 class GATLayerSparse(nn.Module):
@@ -139,7 +140,8 @@ class GATLayerSparse(nn.Module):
 
         # [batch_size * num_heads, num_edges]
         alpha = scatter_softmax(e, edge_dst, dim=1)
-        # [batch_size, num_heads, num_edges]
+        #alpha = scatter_softmax_2d(e, edge_dst)
+        # [batch_size * num_heads, num_edges]
         alpha = alpha.view(batch_size, self.num_heads, num_edges)
         alpha = F.dropout(alpha, self.dropout, training=self.training)
 
@@ -155,7 +157,7 @@ class GATLayerSparse(nn.Module):
         # [batch_num_heads, num_edges, num_hidden]
         m_flat = m.view(batch_num_heads, num_edges, num_hidden)
         # [batch_num_heads, num_edges]
-        index_flat = edge_dst.view(batch_num_heads, num_edges)
+        index_flat = edge_dst.reshape(batch_num_heads, num_edges)
 
         # Aggregate messages to target nodes using torch_scatter.scatter_add
         out_flat = scatter_add(
@@ -165,6 +167,9 @@ class GATLayerSparse(nn.Module):
             dim_size=num_nodes
         )  # [batch_num_heads, num_nodes, num_hidden]
 
+        #out_flat = scatter_sum_2d(m_flat, index_flat)
+
+        
         # Reshape back to original dimensions
         out = out_flat.view(batch_size, num_heads, num_nodes, num_hidden)
 

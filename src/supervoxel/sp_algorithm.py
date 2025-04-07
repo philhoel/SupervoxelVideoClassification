@@ -36,7 +36,16 @@ class Supervoxel:
         self.channels = channels
         self.IE = InterpolationExtractor(
             self.space_patch, self.time_patch, self.channels)
-        self.IE = self.IE.to(torch.device(device))
+        if torch.cuda.is_available():
+            device = torch.device("cuda:0")
+            torch.cuda.set_device(device)  # Optional but can help
+        else:
+            raise RuntimeError("CUDA not available, cannot move model to GPU.")
+
+        print("Moving IE to device:", device)
+
+        
+        self.IE = self.IE.to(device)
 
     def adjust_saturation(self, rgb: torch.Tensor, mul: float):
         '''Adjusts saturation via interpolation / extrapolation.
