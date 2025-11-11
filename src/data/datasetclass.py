@@ -98,81 +98,43 @@ def gaussian_noise(mean=0.0, std=0.1):
 
 class GetData:
 
-    def __init__(self, path: str, split: tuple[float, float, float]) -> None:
+    def __init__(self, path: str, csv="train") -> None:
 
         self.path = path
         self.classes = []
-        self.split = split
+        if csv == "train":
+            self.files = os.path.join(path, "train_data.csv")
+        elif csv == "val":
+            self.files = os.path.join(path, "val_data.csv")
+        elif csv == "test":
+            self.files = os.path.join(path, "test_data.csv")
+
+        temp_dict = {}
+
+        with open(self.files, "r") as csv_file:
+            for line in csv_file.readlines():
+                filename, class_name = line.split(",")
+                class_name = class_name.strip()
+                temp_dict[filename] = class_name
+                if class_name not in self.classes:
+                    self.classes.append(class_name)
+
+        self.class_to_idx = {}
+        for idx, name in enumerate(self.classes):
+            self.class_to_idx[name] = idx
 
         self.video_files = []
+        self.labels = []
+        for key in temp_dict:
+            self.video_files.append(key)
+            self.labels.append(self.class_to_idx[temp_dict[key]])
 
-        for class_name in sorted(os.listdir(path)):
-            self.classes.append(class_name)
+        self.classes = [None] * len(self.class_to_idx)
+        for name in self.class_to_idx:
+            self.classes[self.class_to_idx[name]] = name
 
-            videos = [v for v in os.listdir(f"{path}/{class_name}")]
-
-            self.video_files.append(videos)
-
-        self.num_of_classes = len(self.classes)
-
-    def train_val_test_split(self):
-
-        train_labels = []
-        val_labels = []
-        test_labels = []
-
-        train_lst = []
-        val_lst = []
-        test_lst = []
-
-        for i in range(self.num_of_classes):
-
-            lst_temp = []
-
-            for j, item in enumerate(self.video_files[i]):
-
-                lst_temp.append(item)
-
-            perm = torch.randperm(len(lst_temp))
-            lst_temp = [lst_temp[k] for k in perm]
-
-            n = len(self.video_files[i])
-            n1 = int(n*self.split[1])
-            n2 = int(n*self.split[2])
-
-            val = lst_temp[:n1]
-            test = lst_temp[n1:n2+n1]
-            train = lst_temp[n2+n1:]
-
-            for x in train:
-                train_lst.append(x)
-                train_labels.append(i)
-
-            for y in val:
-                val_lst.append(y)
-                val_labels.append(i)
-
-            for z in test:
-                test_lst.append(z)
-                test_labels.append(i)
-
-        perm1 = torch.randperm(len(train_lst))
-        train_lst = [train_lst[q] for q in perm1]
-        train_labels = [train_labels[q] for q in perm1]
-
-        perm2 = torch.randperm(len(val_lst))
-        val_lst = [val_lst[q] for q in perm2]
-        val_labels = [val_labels[q] for q in perm2]
-
-        perm3 = torch.randperm(len(test_lst))
-        test_lst = [test_lst[q] for q in perm3]
-        test_labels = [test_labels[q] for q in perm3]
-
-        self.train_lst = train_lst
-        self.val_lst = val_lst
-        self.test_lst = test_lst
-
-        return train_lst, train_labels, val_lst, val_labels, test_lst, test_labels
+    def get_dataset(self):
+        return self.video_files, self.labels
 
 
 class VideoData(Dataset):
@@ -191,19 +153,23 @@ class VideoData(Dataset):
 
     def __getitem__(self, idx):
         cap = cv2.VideoCapture(
-            f"{self.path}/{self.class_names[self.y[idx]]}/{self.X[idx]}")
+            f"{self.path}/{self.class_names[self.y[idx]]}/{self.X[idx]}.mp4")
 
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 
+        
+
         frames = np.empty((self.num_frames, frame_height,
                           frame_width, 3), dtype=np.uint8)
         
-
+        #print(self.num_frames)
         for i in range(frame_count):
             ret, frame = cap.read()
             if not ret:
+                break
+            if i >= self.num_frames:
                 break
 
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -223,7 +189,7 @@ class VideoData(Dataset):
 
         
         if len(self.augmentations) > 0:
-            x = augment(self.augmentations)(x)
+            x = augment(self.augmentations, resize=(frame_height,frame_width))(x)
             
 
         x = x.permute(1, 0, 2, 3)
@@ -231,9 +197,6 @@ class VideoData(Dataset):
         if self.transforms:
             x = self.transforms(x)
 
-        if x.shape[1] < 20:
-            x
-
-       
+        #print(f"shape: {x.shape}")
 
         return x.clone(), self.y[idx]

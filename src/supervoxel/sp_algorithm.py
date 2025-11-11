@@ -39,8 +39,8 @@ class Supervoxel:
         if torch.cuda.is_available():
             device = torch.device("cuda:0")
             torch.cuda.set_device(device)  # Optional but can help
-        else:
-            raise RuntimeError("CUDA not available, cannot move model to GPU.")
+        #else:
+        #    raise RuntimeError("CUDA not available, cannot move model to GPU.")
 
         print("Moving IE to device:", device)
 
@@ -236,6 +236,7 @@ class Supervoxel:
             >>> nnz = 200
             >>> packed_sim = cosine_similarity_argmax(vfeat, edges, sizes, nnz)
         '''
+
         idxbit = 63 - valbit
         u, v = edges
         sfl = sizes.contiguous().to(dtype=vfeat.dtype)
@@ -465,6 +466,90 @@ class Supervoxel:
 
         return segmentation.view(batch_size, depth, height, width), edges
 
+    def altered_sv_alg(self, img: torch.Tensor, maxlvl_space=4, maxlvl_time=2):
+
+        lvl = 0
+        lambda_grad = self.lambda_grad
+        lambda_col = self.lambda_col
+    
+        batch_s, _, depth, height, width = img.shape
+    
+        new_img = img.reshape(batch_s*depth, _, height, width)
+        batch_size = batch_s*depth
+        nnz = batch_size * height * width
+    
+        labels = torch.arange(nnz, device=self.device)
+        lr = labels.view(batch_size, height, width).unfold(-1,
+                                                           2, 1).reshape(-1, 2).mT
+        ud = labels.view(batch_size, height, width).unfold(-2,
+                                                           2, 1).reshape(-1, 2).mT
+    
+        edges = torch.cat([lr, ud], dim=-1)
+        sizes = torch.ones_like(labels)
+        hierograph = [labels]
+    
+        r, g, b = self.shape_proc(img.clone())
+        self.center_(self.contrast1_(r, .485, .539))
+        self.center_(self.contrast1_(g, .456, .507))
+        self.center_(self.contrast1_(b, .406, .404))
+        gx, gy, gz = self.shape_proc(self.dgrad3d(img, lambda_grad))
+        features = torch.stack([r, g, b, gx, gy, gz], -1)
+    
+        maxgrad = self.contrast2_(img.new_tensor(13/16), lambda_grad).mul_(2**.5)
+        features = torch.cat([
+            self.col_transform(features[:, :3], img.shape, lambda_col),
+            self.center_(features[:, -3:].norm(2, dim=1, keepdim=True).div_(maxgrad)),
+        ], -1).float()
+    
+        # print(f"features shape before: {features.shape}")
+    
+        while lvl < maxlvl_space:
+            lvl += 1
+            labels, edges, features, sizes, nnz, cc = self.spstep(
+                labels, edges, features, sizes, nnz, lvl
+            )
+    
+            hierograph.append(cc)
+    
+        # print(f"features shape after: {features.shape}")
+    
+        segmentation = hierograph[0]
+        for i in range(1, lvl + 1):
+            segmentation = hierograph[i][segmentation]
+    
+        segmentation = segmentation.view(batch_s, depth, height, width)
+    
+        # print(f"segmentation shape: {segmentation.shape}")
+    
+        edges_t = torch.stack([segmentation[:, :-1].flatten(),
+                               segmentation[:, 1:].flatten()], dim=0)
+        # print(f"edges_t shape: {edges_t.shape}")
+        edges_t = edges_t[:, self.fast_uidx_long2d(edges_t)]
+    
+        # print(f"edges_t unique shape: {edges_t.shape}")
+        edges = torch.cat([edges, edges_t], dim=-1)
+        # edges = edges_t
+    
+        # print(f"edges shape: {edges.shape}")
+    
+        lvl = 0
+    
+        while lvl < maxlvl_time:
+    
+            lvl += 1
+    
+            labels, edges, features, sizes, nnz, cc = self.spstep(
+                labels, edges, features, sizes, nnz, lvl
+            )
+    
+            hierograph.append(cc)
+    
+        segmentation = hierograph[0]
+        for i in range(1, maxlvl_space + maxlvl_time + 1):
+            segmentation = hierograph[i][segmentation]
+    
+        return segmentation.view(batch_s, depth, height, width), edges
+
     def unravel_index(
         self, idx: torch.Tensor, shape: Union[Sequence[int], torch.Tensor]
     ) -> torch.Tensor:
@@ -522,11 +607,14 @@ class Supervoxel:
         bbox[5].scatter_reduce_(0, seg.view(-1), z, 'amax', include_self=False)
         return bbox
 
-    def process(self, vid: torch.Tensor, maxlvl: int = 8, interp: bool = True, histo: bool = False, gradient: bool = False):
+    def process(self, vid: torch.Tensor, maxlvl: int = 8, interp: bool = True, histo: bool = False, gradient: bool = False, sv='orig', space_lvl=4, time_lvl=2, space_patch=4, time_patch=2):
 
         output = []
 
-        segs, edges = self.get_supervoxel_segmentation(vid, maxlvl)
+        if sv == 'orig':
+            segs, edges = self.get_supervoxel_segmentation(vid, maxlvl)
+        elif sv == 'alt':
+            segs, edges = self.altered_sv_alg(vid, space_lvl, time_lvl)
 
         output.append(segs)
         output.append(edges)
