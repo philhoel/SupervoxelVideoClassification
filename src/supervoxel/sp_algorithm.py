@@ -39,12 +39,11 @@ class Supervoxel:
         if torch.cuda.is_available():
             device = torch.device("cuda:0")
             torch.cuda.set_device(device)  # Optional but can help
-        #else:
+        # else:
         #    raise RuntimeError("CUDA not available, cannot move model to GPU.")
 
         print("Moving IE to device:", device)
 
-        
         self.IE = self.IE.to(device)
 
     def adjust_saturation(self, rgb: torch.Tensor, mul: float):
@@ -305,8 +304,6 @@ class Supervoxel:
     def dgrad3d(self, img, lambda_):
         '''Discrete gradients with 3D Scharr Kernel.'''
 
-        # Convert image to grayscale if it's a multi-channel image
-        # Assuming input has shape [batch, channels, depth, height, width]
         img = img.mean(1, keepdim=True)
 
         # Scharr kernels for 3D (x, y, z gradients)
@@ -321,21 +318,12 @@ class Supervoxel:
         scharr_z = torch.tensor([[[[1., 1., 1.], [1., 1., 1.], [1., 1., 1.]],
                                   [[0., 0., 0.], [0., 0., 0.], [0., 0., 0.]],
                                   [[-1., -1., -1.], [-1., -1., -1.], [-1., -1., -1.]]]])
-
-        # print(scharr_x.dtype)
-        # print(img.dtype)
-
-        # Stack kernels along the output dimension
         kernel = torch.stack(
             [scharr_x, scharr_y, scharr_z], dim=0).to(img.device)
-
-        # Pad the image to maintain the original size after convolution
         img_padded = F.pad(img, (1, 1, 1, 1, 1, 1), mode='replicate')
 
-        # Apply 3D convolution
         out = F.conv3d(img_padded, kernel, stride=1).div_(16)
 
-        # Process the output with contrast function
         return self.contrast2_(out, lambda_)
 
     def col_transform(self, colfeat, shape, lambda_col):
@@ -415,8 +403,6 @@ class Supervoxel:
         batch_size, _, depth, height, width = img.shape
         nnz = batch_size * height * width * depth
 
-        # print(f"img: {img.ndim}")
-
         # Initialize Segmentation
         labels = torch.arange(nnz, device=self.device)
         lr = labels.view(batch_size, depth, height,
@@ -429,9 +415,6 @@ class Supervoxel:
         sizes = torch.ones_like(labels)
         hierograph = [labels]
 
-        # print(f"edges: {edges.ndim}")
-        # print(f"edges: {edges.shape}")
-
         # Preprocess Features
         den = max(height, width)
         r, g, b = self.shape_proc(img.clone())
@@ -440,8 +423,6 @@ class Supervoxel:
         self.center_(self.contrast1_(b, .406, .404))
         gx, gy, gz = self.shape_proc(self.dgrad3d(img, lambda_grad))
         features = torch.stack([r, g, b, gx, gy, gz], -1)
-        # print(f"features: {features.ndim}")
-        # print(f"features: {features.shape}")
 
         maxgrad = self.contrast2_(
             img.new_tensor(13/16), lambda_grad).mul_(2**.5)
@@ -471,83 +452,73 @@ class Supervoxel:
         lvl = 0
         lambda_grad = self.lambda_grad
         lambda_col = self.lambda_col
-    
+
         batch_s, _, depth, height, width = img.shape
-    
+
         new_img = img.reshape(batch_s*depth, _, height, width)
         batch_size = batch_s*depth
         nnz = batch_size * height * width
-    
+
         labels = torch.arange(nnz, device=self.device)
         lr = labels.view(batch_size, height, width).unfold(-1,
                                                            2, 1).reshape(-1, 2).mT
         ud = labels.view(batch_size, height, width).unfold(-2,
                                                            2, 1).reshape(-1, 2).mT
-    
+
         edges = torch.cat([lr, ud], dim=-1)
         sizes = torch.ones_like(labels)
         hierograph = [labels]
-    
+
         r, g, b = self.shape_proc(img.clone())
         self.center_(self.contrast1_(r, .485, .539))
         self.center_(self.contrast1_(g, .456, .507))
         self.center_(self.contrast1_(b, .406, .404))
         gx, gy, gz = self.shape_proc(self.dgrad3d(img, lambda_grad))
         features = torch.stack([r, g, b, gx, gy, gz], -1)
-    
-        maxgrad = self.contrast2_(img.new_tensor(13/16), lambda_grad).mul_(2**.5)
+
+        maxgrad = self.contrast2_(
+            img.new_tensor(13/16), lambda_grad).mul_(2**.5)
         features = torch.cat([
             self.col_transform(features[:, :3], img.shape, lambda_col),
-            self.center_(features[:, -3:].norm(2, dim=1, keepdim=True).div_(maxgrad)),
+            self.center_(features[:, -3:].norm(2, dim=1,
+                         keepdim=True).div_(maxgrad)),
         ], -1).float()
-    
-        # print(f"features shape before: {features.shape}")
-    
+
         while lvl < maxlvl_space:
             lvl += 1
             labels, edges, features, sizes, nnz, cc = self.spstep(
                 labels, edges, features, sizes, nnz, lvl
             )
-    
+
             hierograph.append(cc)
-    
-        # print(f"features shape after: {features.shape}")
-    
+
         segmentation = hierograph[0]
         for i in range(1, lvl + 1):
             segmentation = hierograph[i][segmentation]
-    
+
         segmentation = segmentation.view(batch_s, depth, height, width)
-    
-        # print(f"segmentation shape: {segmentation.shape}")
-    
+
         edges_t = torch.stack([segmentation[:, :-1].flatten(),
                                segmentation[:, 1:].flatten()], dim=0)
-        # print(f"edges_t shape: {edges_t.shape}")
         edges_t = edges_t[:, self.fast_uidx_long2d(edges_t)]
-    
-        # print(f"edges_t unique shape: {edges_t.shape}")
         edges = torch.cat([edges, edges_t], dim=-1)
-        # edges = edges_t
-    
-        # print(f"edges shape: {edges.shape}")
-    
+
         lvl = 0
-    
+
         while lvl < maxlvl_time:
-    
+
             lvl += 1
-    
+
             labels, edges, features, sizes, nnz, cc = self.spstep(
                 labels, edges, features, sizes, nnz, lvl
             )
-    
+
             hierograph.append(cc)
-    
+
         segmentation = hierograph[0]
         for i in range(1, maxlvl_space + maxlvl_time + 1):
             segmentation = hierograph[i][segmentation]
-    
+
         return segmentation.view(batch_s, depth, height, width), edges
 
     def unravel_index(
@@ -627,8 +598,6 @@ class Supervoxel:
         if interp:
 
             trilinear, masks = self.IE.forward(flatvid, segs, coords, bbox)
-            # print(f"trilinear shape: {trilinear.shape}")
-            # print(f"masks shape: {masks.shape}")
             output.append(trilinear @ masks)
             output.append(
                 segs.view(-1).mul(segs.shape[0]).add(coords[0]).unique() % segs.shape[0])
@@ -646,28 +615,34 @@ if __name__ == "__main__":
 
     from moviepy.editor import VideoFileClip
 
-    clip = VideoFileClip("v_ApplyEyeMakeup_g01_c01.avi")
-    clip = clip.resize(height=120, width=160)
+    clip = VideoFileClip("v_ApplyEyeMakeup_g01_c01.avi (copy).mp4")
+    clip = clip.resize(height=160, width=160)
     vid = np.array([frame for frame in clip.iter_frames()])
 
-    clip2 = VideoFileClip("v_Archery_g01_c02.avi")
-    clip2 = clip2.resize(height=120, width=160)
-    vid2 = np.array([frame for frame in clip2.iter_frames()])
+    # clip2 = VideoFileClip("v_Archery_g01_c02.avi")
+    # clip2 = clip2.resize(height=120, width=160)
+    # vid2 = np.array([frame for frame in clip2.iter_frames()])
 
     vid = vid / 255
-    vid2 = vid2 / 255
+    # vid2 = vid2 / 255
 
     t = torch.tensor(vid, dtype=torch.float32)
     t = t.unsqueeze(0)
     t = t.permute(0, -1, 1, 2, 3)
 
-    t = t[:, :, :142, :, :]
+    sv = Supervoxel(time_patch=3, space_patch=8)
+    output = sv.process(maxlvl=6)
 
-    t2 = torch.tensor(vid2, dtype=torch.float32)
-    t2 = t2.unsqueeze(0)
-    t2 = t2.permute(0, -1, 1, 2, 3)
+    features = output[2]
+    print(features.shape)
 
-    tn = torch.cat([t, t2], 0)
+    # t = t[:, :, :142, :, :]
+
+    # t2 = torch.tensor(vid2, dtype=torch.float32)
+    # t2 = t2.unsqueeze(0)
+    # t2 = t2.permute(0, -1, 1, 2, 3)
+
+    # tn = torch.cat([t, t2], 0)
 
     # lmbd_grad_values = [10, 20, 30, 40, 50]
     # lmbd_col_values = [5., 9., 10., 12., 15.]
@@ -681,20 +656,20 @@ if __name__ == "__main__":
     #         segs = myclass.get_superpixel_segmentation(t, maxlvl=9)
     #         plot_multiple_frames(segs, lg, lc)
 
-    sv = Supervoxel(kappa=0.1, gamma=0.5)
+    # sv = Supervoxel(kappa=0.1, gamma=0.5)
     # segs = supervoxel.get_superpixel_segmentation(t, maxlvl=9)
 
     # print(f"first video shape super: {segs.shape} || {segs.max() + 1}")
 
-    output = sv.process(tn, maxlvl=9, interp=True)
+    # output = sv.process(tn, maxlvl=9, interp=True)
 
-    segs, edges, features, sv_indices = output[0], output[1], output[2], output[3], output[4]
+    # segs, edges, features, sv_indices = output[0], output[1], output[2], output[3], output[4]
 
     # print(f"Edges shape: {edges.shape}")
     # print(f"Edges: {edges}")
     # print(f"Num of SV: {segs.max() + 1}")
 
-    print(features.flatten(start_dim=1, end_dim=-1).shape)
+    # print(features.flatten(start_dim=1, end_dim=-1).shape)
 
     # print(masks)
 
