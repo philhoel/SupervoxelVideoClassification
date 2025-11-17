@@ -1,10 +1,6 @@
 # Master Thesis: Supervoxels for segmentation of videos in video classification
 
-In this master thesis, I will partition videos using a supervoxel algorithm
-
-
-
-# Download
+## Download
 1. clone this repo
 2. If running on Fox, make sure to load the Miniconda module:
 ```BASH
@@ -20,22 +16,22 @@ conda activate ml-p3;
 pip install --user -r requirements.txt
 ```
 
-# Run
-## Locally:
+## Run
+### Locally:
 ```BASH
-conda activate ml-p3;
+conda activate ml-mas;
 python3 src/main.py
 ```
 
-## On Fox:
+### On Fox:
 ```BASH
 module load Miniconda3/22.11.1-1
-conda activate ml-p3
+conda activate ml-mas
 module load CUDA/12.1.1
 python3 src/main.py
 ```
 
-# Debugging
+## Debugging
 If running the model gives: `RuntimeError: Not compiled with CUDA support`, it might mean that there has been an error when downloading the `torch_scatter` library. In order to fix this problem try reinstalling torch scatter in the conda environment:
 ```BASH
 pip install --force-reinstall torch-scatter==2.1.2 -f https://data.pyg.org/whl/torch-2.3.0+cu121.html
