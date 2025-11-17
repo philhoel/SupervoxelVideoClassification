@@ -1,4 +1,4 @@
-# Master Thesis: Supervoxels for segmentation of videos in video classification
+# Master Thesis: Supervoxels graph networks for video action recognition
 
 ## Download
 1. clone this repo
